@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Story Pusher</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #f0ede8;
+  --paper: #0a0a0a;
+  --alt: #111111;
+  --accent: #c8f000;
+  --mid: #888078;
+  --rule: #1e1e1c;
+  --card: #141414;
+  --danger: #ff5050;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--paper); color:var(--ink); font-family:'DM Sans',sans-serif; font-weight:300; min-height:100vh; }
+
+/* ── SHARED ── */
+.mono { font-family:'DM Mono',monospace; }
+.eyebrow { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+.screen { display:none; }
+.screen.active { display:flex; }
+
+btn-row { display:flex; gap:10px; }
+
+/* ── BUTTONS ── */
+.btn {
+  font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+  padding:10px 22px; cursor:pointer; border:1px solid var(--rule); background:transparent;
+  color:var(--mid); transition:all 0.12s; white-space:nowrap;
+}
+.btn:hover { border-color:rgba(200,240,0,0.3); color:var(--ink); }
+.btn:disabled { opacity:0.3; cursor:not-allowed; }
+.btn-primary { background:var(--accent); color:#0a0a0a; border-color:var(--accent); font-weight:500; }
+.btn-primary:hover { opacity:0.85; color:#0a0a0a; }
+.btn-ghost { border-color:rgba(200,240,0,0.25); color:var(--accent); }
+.btn-ghost:hover { background:rgba(200,240,0,0.08); color:var(--accent); }
+.btn-danger { border-color:rgba(255,80,80,0.25); color:var(--danger); }
+.btn-danger:hover { background:rgba(255,80,80,0.08); }
+
+/* ── INPUTS ── */
+.field { display:flex; flex-direction:column; gap:6px; margin-bottom:20px; }
+.field label { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--mid); }
+.field input, .field textarea, .field select {
+  background:var(--alt); border:1px solid var(--rule); color:var(--ink);
+  font-family:'DM Sans',sans-serif; font-size:14px; padding:10px 14px;
+  outline:none; width:100%; transition:border-color 0.12s;
+}
+.field input:focus, .field textarea:focus { border-color:rgba(200,240,0,0.4); }
+.field textarea { resize:vertical; min-height:120px; line-height:1.6; }
+.field .hint { font-size:12px; color:var(--mid); line-height:1.5; }
+.field .hint a { color:var(--accent); text-decoration:none; }
+
+/* ── SETUP SCREEN ── */
+#setupScreen {
+  min-height:100vh; align-items:center; justify-content:center; padding:40px 24px;
+}
+.setup-wrap { width:100%; max-width:580px; }
+.setup-card {
+  background:var(--card); border:1px solid var(--rule);
+  border-top:2px solid var(--accent); padding:48px;
+}
+.setup-title { font-size:28px; font-weight:700; letter-spacing:-0.03em; margin-bottom:6px; }
+.setup-title em { font-style:italic; color:var(--accent); }
+.setup-sub { font-size:14px; color:var(--mid); margin-bottom:36px; line-height:1.6; }
+
+.file-drop {
+  border:1px dashed var(--rule); padding:28px 20px; text-align:center;
+  cursor:pointer; transition:border-color 0.12s; position:relative; margin-bottom:8px;
+}
+.file-drop:hover, .file-drop.drag { border-color:rgba(200,240,0,0.4); }
+.file-drop input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.file-drop p { font-family:'DM Mono',monospace; font-size:11px; color:var(--mid); letter-spacing:0.08em; }
+.file-drop p span { color:var(--accent); }
+.file-name { font-family:'DM Mono',monospace; font-size:11px; color:var(--accent); margin-top:6px; min-height:16px; }
+
+.divider-or {
+  display:flex; align-items:center; gap:12px; margin:16px 0;
+  font-family:'DM Mono',monospace; font-size:10px; color:var(--mid); letter-spacing:0.1em;
+}
+.divider-or::before, .divider-or::after { content:''; flex:1; height:1px; background:var(--rule); }
+
+.setup-footer { margin-top:28px; padding-top:24px; border-top:1px solid var(--rule); display:flex; justify-content:space-between; align-items:center; }
+
+/* ── PROJECT SWITCHER (top bar) ── */
+.topbar {
+  height:52px; border-bottom:1px solid var(--rule); display:flex; align-items:center;
+  padding:0 24px; gap:16px; background:var(--paper); flex-shrink:0;
+}
+.topbar-logo { font-family:'DM Mono',monospace; font-size:12px; letter-spacing:0.1em; color:var(--mid); }
+.topbar-logo span { color:var(--accent); }
+.topbar-project-select {
+  background:var(--card); border:1px solid var(--rule); color:var(--ink);
+  font-family:'DM Sans',sans-serif; font-size:13px; padding:6px 12px;
+  outline:none; cursor:pointer; max-width:240px;
+}
+.topbar-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.conn-badge {
+  display:flex; align-items:center; gap:6px;
+  font-family:'DM Mono',monospace; font-size:10px; color:var(--mid);
+  border:1px solid var(--rule); padding:5px 12px;
+}
+.dot { width:6px; height:6px; border-radius:50%; background:#333; flex-shrink:0; }
+.dot.live { background:var(--accent); box-shadow:0 0 5px rgba(200,240,0,0.5); }
+.dot.err { background:var(--danger); }
+
+/* ── MAIN APP ── */
+#appScreen { flex-direction:column; min-height:100vh; }
+.app-body { display:grid; grid-template-columns:260px 1fr; flex:1; overflow:hidden; height:calc(100vh - 52px); }
+
+/* SIDEBAR */
+.sidebar {
+  border-right:1px solid var(--rule); display:flex; flex-direction:column;
+  background:var(--alt); overflow-y:auto;
+}
+.sidebar-section { padding:20px; border-bottom:1px solid var(--rule); }
+.sidebar-label { font-family:'DM Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:var(--mid); margin-bottom:10px; }
+.epic-list { display:flex; flex-direction:column; gap:2px; }
+.epic-btn {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:9px 12px; background:transparent; border:1px solid transparent;
+  color:var(--mid); font-family:'DM Sans',sans-serif; font-size:13px;
+  cursor:pointer; text-align:left; transition:all 0.12s; width:100%; gap:8px;
+}
+.epic-btn:hover { background:var(--card); color:var(--ink); border-color:var(--rule); }
+.epic-btn.active { background:#0e120a; border-color:rgba(200,240,0,0.25); color:var(--accent); }
+.epic-right { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.epic-badge {
+  font-family:'DM Mono',monospace; font-size:10px; color:#333;
+  background:var(--rule); padding:1px 7px; border-radius:2px; min-width:24px; text-align:center;
+}
+.epic-btn.done .epic-badge { background:rgba(200,240,0,0.12); color:var(--accent); }
+.epic-check { font-size:10px; color:transparent; }
+.epic-btn.done .epic-check { color:var(--accent); }
+
+.sidebar-footer { padding:16px 20px; margin-top:auto; border-top:1px solid var(--rule); display:flex; flex-direction:column; gap:8px; }
+.project-name-display { font-family:'DM Mono',monospace; font-size:10px; color:var(--mid); }
+.project-name-display strong { color:var(--ink); font-weight:500; display:block; margin-top:2px; font-size:12px; }
+
+/* MAIN PANE */
+.main-pane { display:flex; flex-direction:column; overflow:hidden; }
+.toolbar {
+  padding:12px 24px; border-bottom:1px solid var(--rule);
+  display:flex; align-items:center; gap:10px; flex-shrink:0;
+}
+.toolbar-ctx { flex:1; font-family:'DM Mono',monospace; font-size:11px; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.toolbar-ctx strong { color:var(--mid); font-weight:500; }
+.tally { font-family:'DM Mono',monospace; font-size:10px; color:var(--mid); white-space:nowrap; }
+.tally b { color:var(--ink); }
+
+/* STORIES */
+.stories-area { flex:1; overflow-y:auto; padding:20px 24px; }
+.stories-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+.story-card {
+  background:var(--card); border:1px solid var(--rule);
+  border-top:2px solid transparent; padding:14px 16px;
+  animation:rise 0.2s ease forwards; opacity:0; transform:translateY(5px);
+}
+.story-card.must-have { border-top-color:var(--accent); }
+.story-card.should-have { border-top-color:#EF9F27; }
+.story-card.nice-to-have { border-top-color:#2a2a28; }
+.story-card.pushed { border-color:rgba(200,240,0,0.1); }
+@keyframes rise { to { opacity:1; transform:translateY(0); } }
+
+.card-tags { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; }
+.tag { font-family:'DM Mono',monospace; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; padding:2px 7px; border-radius:2px; }
+.tag-user { background:rgba(200,240,0,0.08); color:#9ab800; border:1px solid rgba(200,240,0,0.16); }
+.tag-must { background:rgba(200,240,0,0.05); color:#7a9000; border:1px solid rgba(200,240,0,0.1); }
+.tag-should { background:rgba(200,140,0,0.08); color:#BA7517; border:1px solid rgba(200,140,0,0.15); }
+.tag-nice { background:#181816; color:#444; border:1px solid var(--rule); }
+
+.story-text { font-size:12px; color:#a8a098; line-height:1.65; }
+.story-text em { font-style:normal; color:var(--ink); font-weight:500; }
+.card-footer { display:flex; align-items:center; justify-content:space-between; margin-top:9px; padding-top:8px; border-top:1px solid var(--rule); }
+.push-status { font-family:'DM Mono',monospace; font-size:9px; letter-spacing:0.07em; text-transform:uppercase; color:#2a2a28; }
+.push-status.pushed { color:var(--accent); }
+.push-status.pushing { color:#555; }
+.push-status.error { color:var(--danger); }
+.card-copy { background:transparent; border:none; color:#333; font-family:'DM Mono',monospace; font-size:9px; letter-spacing:0.07em; text-transform:uppercase; cursor:pointer; padding:0; transition:color 0.12s; }
+.card-copy:hover { color:var(--mid); }
+
+/* EMPTY / LOADING */
+.empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:280px; gap:12px; text-align:center; }
+.empty-glyph { font-size:44px; opacity:0.1; line-height:1; }
+.empty p { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--mid); opacity:0.4; line-height:1.9; }
+
+.loading { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:280px; gap:10px; }
+.loading-row { display:flex; align-items:center; gap:10px; }
+.spinner { width:16px; height:16px; border:2px solid var(--rule); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; flex-shrink:0; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.loading-text { font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--mid); }
+.loading-sub { font-family:'DM Mono',monospace; font-size:10px; color:#2e2e2c; letter-spacing:0.08em; }
+
+/* LOG */
+.log-bar { border-top:1px solid var(--rule); padding:9px 24px; flex-shrink:0; display:flex; align-items:center; gap:10px; background:#080808; min-height:38px; }
+.log-label { font-family:'DM Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#252522; flex-shrink:0; }
+.log-text { font-family:'DM Mono',monospace; font-size:11px; color:#3a3a38; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.log-text.ok { color:var(--accent); }
+.log-text.err { color:var(--danger); }
+.log-text.info { color:var(--mid); }
+
+/* ── PROJECT SETUP MODAL ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100; align-items:center; justify-content:center; padding:24px; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--card); border:1px solid var(--rule); border-top:2px solid var(--accent); padding:40px; width:100%; max-width:560px; max-height:90vh; overflow-y:auto; }
+.modal-title { font-size:22px; font-weight:700; letter-spacing:-0.02em; margin-bottom:6px; }
+.modal-sub { font-size:13px; color:var(--mid); margin-bottom:28px; line-height:1.6; }
+.modal-footer { display:flex; justify-content:space-between; align-items:center; margin-top:24px; padding-top:20px; border-top:1px solid var(--rule); }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--rule); }
+
+@media (max-width:800px) {
+  .app-body { grid-template-columns:1fr; }
+  .sidebar { border-right:none; border-bottom:1px solid var(--rule); max-height:240px; }
+  .stories-grid { grid-template-columns:1fr; }
+  .setup-card { padding:28px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     SETUP SCREEN (first run / no anthropic key)
+     ══════════════════════════════════════════ -->
+<div id="setupScreen" class="screen">
+  <div class="setup-wrap">
+    <div class="setup-card">
+      <div class="eyebrow">Story Pusher — Setup</div>
+      <h1 class="setup-title">Connect your <em>tools.</em></h1>
+      <p class="setup-sub">Your credentials are saved only in your browser's local storage — never sent anywhere except directly to Anthropic and Asana.</p>
+
+      <div class="field">
+        <label>Anthropic API Key</label>
+        <input type="password" id="setupAnthropicKey" placeholder="sk-ant-..." autocomplete="off" />
+        <span class="hint">Get yours at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys</span>
+      </div>
+
+      <div style="padding-top:4px; border-top:1px solid var(--rule); margin-bottom:24px;">
+        <p style="font-family:'DM Mono',monospace; font-size:10px; color:var(--mid); margin-top:16px; margin-bottom:16px; letter-spacing:0.1em; text-transform:uppercase;">First project</p>
+
+        <div class="field">
+          <label>Project Name</label>
+          <input type="text" id="setupProjectName" placeholder="e.g. Proposal App" />
+        </div>
+
+        <div class="field">
+          <label>Asana Personal Access Token</label>
+          <input type="password" id="setupAsanaToken" placeholder="2/..." autocomplete="off" />
+          <span class="hint">Asana → My Settings → Apps → Personal Access Tokens</span>
+        </div>
+
+        <div class="field">
+          <label>Asana Project GID</label>
+          <input type="text" id="setupProjectGid" placeholder="e.g. 1213754367260271" />
+          <span class="hint">From your Asana project URL: asana.com/0/<strong>GID</strong>/...</span>
+        </div>
+
+        <div class="field">
+          <label>Context Document</label>
+          <div class="file-drop" id="setupFileDrop">
+            <input type="file" id="setupFileInput" accept=".txt,.md,.html,.pdf" onchange="handleFileSetup(this)" />
+            <p>Drop a file here or <span>browse</span></p>
+            <p style="margin-top:4px; font-size:10px; opacity:0.5;">.txt · .md · .html (PDF text extracted)</p>
+          </div>
+          <div class="file-name" id="setupFileName"></div>
+          <div class="divider-or">or paste</div>
+          <textarea id="setupContextText" placeholder="Paste your project context — pitch deck text, PRD, feature list, anything that describes what you're building and who it's for..."></textarea>
+        </div>
+      </div>
+
+      <div class="setup-footer">
+        <span style="font-size:12px; color:var(--mid);">You can add more projects later.</span>
+        <button class="btn btn-primary" onclick="completeSetup()">Save & Launch →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MAIN APP SCREEN
+     ══════════════════════════════════════════ -->
+<div id="appScreen" class="screen">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="topbar-logo">Story <span>Pusher</span></span>
+    <select class="topbar-project-select" id="projectSelect" onchange="switchProject(this.value)"></select>
+    <div class="topbar-right">
+      <div class="conn-badge">
+        <div class="dot" id="connDot"></div>
+        <span id="connLabel">Connecting...</span>
+      </div>
+      <button class="btn" onclick="openNewProjectModal()">+ New Project</button>
+      <button class="btn" onclick="openSettingsModal()">Settings</button>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div class="app-body">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Epics</div>
+        <div class="epic-list" id="epicList">
+          <div style="font-family:'DM Mono',monospace; font-size:10px; color:#333; padding:8px 4px;">No epics yet — context doc required</div>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="project-name-display">
+          Current project<strong id="currentProjectName">—</strong>
+        </div>
+        <button class="btn btn-danger" style="font-size:10px; padding:7px 14px;" onclick="clearSession()">Clear Session</button>
+      </div>
+    </div>
+
+    <!-- MAIN PANE -->
+    <div class="main-pane">
+      <div class="toolbar">
+        <div class="toolbar-ctx" id="toolbarCtx">Select an epic to generate its complete story set</div>
+        <div class="tally" id="tally" style="display:none;"><b id="tallyCount">0</b> stories · <b id="tallyPushed">0</b> pushed</div>
+        <button class="btn btn-ghost" id="pushBtn" onclick="pushAll()" disabled>Push to Asana →</button>
+        <button class="btn btn-primary" id="genBtn" onclick="generate()" disabled>Generate</button>
+      </div>
+
+      <div class="stories-area" id="storiesArea">
+        <div class="empty">
+          <div class="empty-glyph">◎</div>
+          <p>Select an epic from the left.<br>Claude generates the complete<br>story set — no manual count.</p>
+        </div>
+      </div>
+
+      <div class="log-bar">
+        <span class="log-label">Log</span>
+        <span class="log-text" id="logText">Ready.</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     NEW PROJECT MODAL
+     ══════════════════════════════════════════ -->
+<div class="modal-overlay" id="newProjectModal">
+  <div class="modal">
+    <div class="eyebrow">New Project</div>
+    <h2 class="modal-title">Add a project</h2>
+    <p class="modal-sub">Your Anthropic key is already saved. Just connect a new Asana project and drop in a context doc.</p>
+
+    <div class="field">
+      <label>Project Name</label>
+      <input type="text" id="npName" placeholder="e.g. Client Portal App" />
+    </div>
+    <div class="field">
+      <label>Asana Personal Access Token</label>
+      <input type="password" id="npAsanaToken" placeholder="2/..." autocomplete="off" />
+    </div>
+    <div class="field">
+      <label>Asana Project GID</label>
+      <input type="text" id="npProjectGid" placeholder="e.g. 1213754367260271" />
+    </div>
+    <div class="field">
+      <label>Context Document</label>
+      <div class="file-drop" id="npFileDrop">
+        <input type="file" id="npFileInput" accept=".txt,.md,.html,.pdf" onchange="handleFileNP(this)" />
+        <p>Drop a file or <span>browse</span></p>
+      </div>
+      <div class="file-name" id="npFileName"></div>
+      <div class="divider-or">or paste</div>
+      <textarea id="npContextText" placeholder="Paste project context..."></textarea>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('newProjectModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewProject()">Save Project →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SETTINGS MODAL
+     ══════════════════════════════════════════ -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="eyebrow">Settings</div>
+    <h2 class="modal-title">Update credentials</h2>
+    <p class="modal-sub">Edit your Anthropic API key or the current project's Asana settings.</p>
+
+    <div class="field">
+      <label>Anthropic API Key</label>
+      <input type="password" id="settingsAnthropicKey" placeholder="sk-ant-..." autocomplete="off" />
+    </div>
+    <div style="border-top:1px solid var(--rule); padding-top:20px; margin-top:4px; margin-bottom:20px;">
+      <p style="font-family:'DM Mono',monospace; font-size:10px; color:var(--mid); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:16px;">Current Project</p>
+      <div class="field">
+        <label>Project Name</label>
+        <input type="text" id="settingsProjectName" />
+      </div>
+      <div class="field">
+        <label>Asana Token</label>
+        <input type="password" id="settingsAsanaToken" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Asana Project GID</label>
+        <input type="text" id="settingsProjectGid" />
+      </div>
+      <div class="field">
+        <label>Context Document (replace)</label>
+        <div class="file-drop">
+          <input type="file" id="settingsFileInput" accept=".txt,.md,.html,.pdf" onchange="handleFileSettings(this)" />
+          <p>Drop a file or <span>browse</span></p>
+        </div>
+        <div class="file-name" id="settingsFileName"></div>
+        <div class="divider-or">or paste / edit</div>
+        <textarea id="settingsContextText" placeholder="Project context..."></textarea>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+
+const LS_KEY = 'storyPusher_v1';
+
+function loadState() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
+}
+
+function saveState(state) {
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
+
+let state = loadState();
+// state shape:
+// {
+//   anthropicKey: string,
+//   activeProjectId: string,
+//   projects: {
+//     [id]: { name, asanaToken, projectGid, contextDoc, epics: [] }
+//   }
+// }
+
+let activeProject = null;
+let selectedEpic = null;
+let currentStories = [];
+let pushedCount = 0;
+let sectionCache = {};
+let tagCache = {};
+let wsGidCache = null;
+let cfCache = { userType:null, userTypeEnumMap:{}, priority:null, priorityEnumMap:{}, epic:null, epicEnumMap:{} };
+
+const TAG_COLORS = ['light-green','light-blue','light-purple','light-pink','light-orange','light-teal'];
+const PRI_COLORS = ['light-red','light-yellow','light-teal'];
+const EPIC_COLORS = ['light-green','light-blue','light-purple','light-pink','light-orange','light-teal','light-red'];
+const USER_TYPES = ['Visitor','Free Account','Subscriber','Lifetime Purchaser','Business Owner','Proposal Recipient'];
+const PRIORITIES = ['must-have','should-have','nice-to-have'];
+
+// ══════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════
+
+function boot() {
+  if (!state.anthropicKey || !state.projects || Object.keys(state.projects).length === 0) {
+    show('setupScreen');
+  } else {
+    show('appScreen');
+    loadActiveProject();
+  }
+}
+
+function show(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+}
+
+function loadActiveProject() {
+  const projects = state.projects || {};
+  const ids = Object.keys(projects);
+  if (!ids.length) return;
+
+  // Default to saved active or first
+  const activeId = state.activeProjectId && projects[state.activeProjectId]
+    ? state.activeProjectId
+    : ids[0];
+  state.activeProjectId = activeId;
+  saveState(state);
+
+  activeProject = projects[activeId];
+
+  // Populate project switcher
+  const sel = document.getElementById('projectSelect');
+  sel.innerHTML = '';
+  ids.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = projects[id].name;
+    if (id === activeId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  document.getElementById('currentProjectName').textContent = activeProject.name;
+
+  // Reset caches when switching project
+  sectionCache = {}; tagCache = {}; wsGidCache = null;
+  cfCache = { userType:null, userTypeEnumMap:{}, priority:null, priorityEnumMap:{}, epic:null, epicEnumMap:{} };
+  selectedEpic = null; currentStories = []; pushedCount = 0;
+
+  buildEpicSidebar(activeProject.epics || []);
+  document.getElementById('genBtn').disabled = true;
+  document.getElementById('pushBtn').disabled = true;
+  document.getElementById('tally').style.display = 'none';
+  document.getElementById('toolbarCtx').textContent = 'Select an epic to generate its complete story set';
+  document.getElementById('storiesArea').innerHTML = `<div class="empty"><div class="empty-glyph">◎</div><p>Select an epic from the left.<br>Claude generates the complete<br>story set — no manual count.</p></div>`;
+
+  checkConnection();
+}
+
+// ══════════════════════════════════════════
+// SETUP FLOW
+// ══════════════════════════════════════════
+
+let setupFileContent = '';
+
+function handleFileSetup(input) {
+  readFile(input.files[0], (text) => {
+    setupFileContent = text;
+    document.getElementById('setupFileName').textContent = input.files[0].name;
+  });
+}
+
+async function completeSetup() {
+  const anthropicKey = document.getElementById('setupAnthropicKey').value.trim();
+  const projectName = document.getElementById('setupProjectName').value.trim();
+  const asanaToken = document.getElementById('setupAsanaToken').value.trim();
+  const projectGid = document.getElementById('setupProjectGid').value.trim();
+  const pastedContext = document.getElementById('setupContextText').value.trim();
+  const contextDoc = setupFileContent || pastedContext;
+
+  if (!anthropicKey) return alert('Anthropic API key is required.');
+  if (!projectName) return alert('Project name is required.');
+  if (!asanaToken) return alert('Asana token is required.');
+  if (!projectGid) return alert('Asana project GID is required.');
+  if (!contextDoc) return alert('Context document is required — paste or upload one.');
+
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Inferring epics...';
+
+  // Infer epics from context doc
+  const epics = await inferEpics(anthropicKey, contextDoc);
+  if (!epics) { btn.disabled = false; btn.textContent = 'Save & Launch →'; return; }
+
+  const projectId = 'proj_' + Date.now();
+  state.anthropicKey = anthropicKey;
+  state.activeProjectId = projectId;
+  state.projects = state.projects || {};
+  state.projects[projectId] = { name: projectName, asanaToken, projectGid, contextDoc, epics };
+  saveState(state);
+
+  btn.disabled = false; btn.textContent = 'Save & Launch →';
+  show('appScreen');
+  loadActiveProject();
+}
+
+// ══════════════════════════════════════════
+// NEW PROJECT MODAL
+// ══════════════════════════════════════════
+
+let npFileContent = '';
+
+function handleFileNP(input) {
+  readFile(input.files[0], (text) => {
+    npFileContent = text;
+    document.getElementById('npFileName').textContent = input.files[0].name;
+  });
+}
+
+function openNewProjectModal() {
+  npFileContent = '';
+  document.getElementById('npName').value = '';
+  document.getElementById('npAsanaToken').value = '';
+  document.getElementById('npProjectGid').value = '';
+  document.getElementById('npContextText').value = '';
+  document.getElementById('npFileName').textContent = '';
+  document.getElementById('newProjectModal').classList.add('open');
+}
+
+async function saveNewProject() {
+  const name = document.getElementById('npName').value.trim();
+  const asanaToken = document.getElementById('npAsanaToken').value.trim();
+  const projectGid = document.getElementById('npProjectGid').value.trim();
+  const pastedContext = document.getElementById('npContextText').value.trim();
+  const contextDoc = npFileContent || pastedContext;
+
+  if (!name || !asanaToken || !projectGid || !contextDoc) return alert('All fields required.');
+
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Inferring epics...';
+
+  const epics = await inferEpics(state.anthropicKey, contextDoc);
+  if (!epics) { btn.disabled = false; btn.textContent = 'Save Project →'; return; }
+
+  const projectId = 'proj_' + Date.now();
+  state.projects[projectId] = { name, asanaToken, projectGid, contextDoc, epics };
+  state.activeProjectId = projectId;
+  saveState(state);
+
+  btn.disabled = false; btn.textContent = 'Save Project →';
+  closeModal('newProjectModal');
+  loadActiveProject();
+}
+
+// ══════════════════════════════════════════
+// SETTINGS MODAL
+// ══════════════════════════════════════════
+
+let settingsFileContent = '';
+
+function handleFileSettings(input) {
+  readFile(input.files[0], (text) => {
+    settingsFileContent = text;
+    document.getElementById('settingsFileName').textContent = input.files[0].name;
+  });
+}
+
+function openSettingsModal() {
+  settingsFileContent = '';
+  document.getElementById('settingsAnthropicKey').value = state.anthropicKey || '';
+  document.getElementById('settingsProjectName').value = activeProject?.name || '';
+  document.getElementById('settingsAsanaToken').value = activeProject?.asanaToken || '';
+  document.getElementById('settingsProjectGid').value = activeProject?.projectGid || '';
+  document.getElementById('settingsContextText').value = activeProject?.contextDoc || '';
+  document.getElementById('settingsFileName').textContent = '';
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+async function saveSettings() {
+  const anthropicKey = document.getElementById('settingsAnthropicKey').value.trim();
+  const name = document.getElementById('settingsProjectName').value.trim();
+  const asanaToken = document.getElementById('settingsAsanaToken').value.trim();
+  const projectGid = document.getElementById('settingsProjectGid').value.trim();
+  const pastedContext = document.getElementById('settingsContextText').value.trim();
+  const contextDoc = settingsFileContent || pastedContext;
+
+  if (!anthropicKey || !name || !asanaToken || !projectGid || !contextDoc) return alert('All fields required.');
+
+  const btn = event.target;
+  const contextChanged = contextDoc !== activeProject.contextDoc;
+
+  let epics = activeProject.epics;
+  if (contextChanged) {
+    btn.disabled = true; btn.textContent = 'Re-inferring epics...';
+    epics = await inferEpics(anthropicKey, contextDoc);
+    if (!epics) { btn.disabled = false; btn.textContent = 'Save Changes'; return; }
+  }
+
+  state.anthropicKey = anthropicKey;
+  state.projects[state.activeProjectId] = { name, asanaToken, projectGid, contextDoc, epics };
+  saveState(state);
+
+  btn.disabled = false; btn.textContent = 'Save Changes';
+  closeModal('settingsModal');
+  loadActiveProject();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ══════════════════════════════════════════
+// PROJECT SWITCHER
+// ══════════════════════════════════════════
+
+function switchProject(projectId) {
+  state.activeProjectId = projectId;
+  saveState(state);
+  loadActiveProject();
+}
+
+// ══════════════════════════════════════════
+// CLEAR SESSION
+// ══════════════════════════════════════════
+
+function clearSession() {
+  if (!confirm('This will clear ALL saved credentials and projects from this browser. Are you sure?')) return;
+  localStorage.removeItem(LS_KEY);
+  state = {};
+  location.reload();
+}
+
+// ══════════════════════════════════════════
+// EPIC SIDEBAR
+// ══════════════════════════════════════════
+
+function buildEpicSidebar(epics) {
+  const list = document.getElementById('epicList');
+  list.innerHTML = '';
+  if (!epics || !epics.length) {
+    list.innerHTML = '<div style="font-family:\'DM Mono\',monospace; font-size:10px; color:#333; padding:8px 4px;">No epics — add a context doc in Settings</div>';
+    return;
+  }
+  epics.forEach(epic => {
+    const btn = document.createElement('button');
+    btn.className = 'epic-btn'; btn.id = 'eb-' + btoa(epic).replace(/=/g,'');
+    btn.innerHTML = `<span>${epic}</span><div class="epic-right"><span class="epic-check" id="eck-${btoa(epic).replace(/=/g,'')}">✓</span><span class="epic-badge" id="ebadge-${btoa(epic).replace(/=/g,'')}">—</span></div>`;
+    btn.onclick = () => selectEpic(epic);
+    list.appendChild(btn);
+  });
+}
+
+function epicId(epic) { return btoa(epic).replace(/=/g,''); }
+
+function selectEpic(epic) {
+  document.querySelectorAll('.epic-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('eb-' + epicId(epic));
+  if (btn) btn.classList.add('active');
+  selectedEpic = epic;
+  currentStories = []; pushedCount = 0;
+  document.getElementById('toolbarCtx').innerHTML = `Generate complete story set for: <strong>${epic}</strong>`;
+  document.getElementById('genBtn').disabled = false;
+  document.getElementById('pushBtn').disabled = true;
+  document.getElementById('tally').style.display = 'none';
+  document.getElementById('storiesArea').innerHTML = `<div class="empty"><div class="empty-glyph">◎</div><p>Ready — hit Generate for <strong style="color:var(--mid)">${epic}</strong></p></div>`;
+}
+
+// ══════════════════════════════════════════
+// INFER EPICS FROM CONTEXT DOC
+// ══════════════════════════════════════════
+
+async function inferEpics(anthropicKey, contextDoc) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        system: `You are a product manager. Given a project context document, identify the key product epics — the major functional areas that would each contain multiple user stories. Return ONLY a JSON array of epic name strings. No markdown, no explanation. Example: ["Proposal Builder","Contracts","Payment","Onboarding"]`,
+        messages: [{ role: 'user', content: `Here is the project context:\n\n${contextDoc.slice(0, 8000)}\n\nReturn the list of epics as a JSON array of strings.` }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.map(b => b.text||'').join('') || '';
+    return JSON.parse(raw.replace(/```json/g,'').replace(/```/g,'').trim());
+  } catch(e) {
+    alert('Failed to infer epics: ' + e.message);
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════
+// ASANA HELPERS
+// ══════════════════════════════════════════
+
+function asanaFetch(path, opts={}) {
+  return fetch('https://app.asana.com/api/1.0' + path, {
+    ...opts,
+    headers: {
+      'Authorization': `Bearer ${activeProject.asanaToken}`,
+      'Content-Type': 'application/json',
+      ...(opts.headers||{})
+    }
+  }).then(r => r.json());
+}
+
+async function checkConnection() {
+  try {
+    const data = await asanaFetch('/users/me');
+    if (data.data?.name) {
+      document.getElementById('connDot').classList.add('live');
+      document.getElementById('connLabel').textContent = `Connected · ${data.data.name.split(' ')[0]}`;
+      log(`Connected as ${data.data.name}`, 'ok');
+    } else throw new Error('bad auth');
+  } catch {
+    document.getElementById('connDot').classList.remove('live');
+    document.getElementById('connDot').classList.add('err');
+    document.getElementById('connLabel').textContent = 'Auth failed';
+    log('Asana auth failed — check token in Settings', 'err');
+  }
+}
+
+async function getWsGid() {
+  if (wsGidCache) return wsGidCache;
+  const d = await asanaFetch(`/projects/${activeProject.projectGid}`);
+  wsGidCache = d.data?.workspace?.gid;
+  return wsGidCache;
+}
+
+async function getOrCreateTag(name, color) {
+  if (tagCache[name]) return tagCache[name];
+  const wsGid = await getWsGid();
+  const list = await asanaFetch(`/workspaces/${wsGid}/tags`);
+  const existing = list.data?.find(t => t.name === name);
+  if (existing) { tagCache[name] = existing.gid; return existing.gid; }
+  const created = await asanaFetch('/tags', { method:'POST', body: JSON.stringify({ data:{ name, color, workspace: wsGid } }) });
+  tagCache[name] = created.data.gid;
+  return created.data.gid;
+}
+
+async function getOrCreateSection(epicName) {
+  if (sectionCache[epicName]) return sectionCache[epicName];
+  const list = await asanaFetch(`/projects/${activeProject.projectGid}/sections`);
+  const existing = list.data?.find(s => s.name === epicName);
+  if (existing) { sectionCache[epicName] = existing.gid; return existing.gid; }
+  const created = await asanaFetch(`/projects/${activeProject.projectGid}/sections`, { method:'POST', body: JSON.stringify({ data:{ name: epicName } }) });
+  sectionCache[epicName] = created.data.gid;
+  log(`Created section: ${epicName}`, 'ok');
+  return created.data.gid;
+}
+
+async function getOrCreateEnumField(fieldName, options) {
+  const wsGid = await getWsGid();
+  const projFields = await asanaFetch(`/projects/${activeProject.projectGid}/custom_field_settings`);
+  const existing = projFields.data?.find(f => f.custom_field?.name === fieldName);
+  if (existing) {
+    const enumMap = {};
+    existing.custom_field.enum_options?.forEach(o => { enumMap[o.name] = o.gid; });
+    return { gid: existing.custom_field.gid, enumMap };
+  }
+  const created = await asanaFetch('/custom_fields', { method:'POST', body: JSON.stringify({ data:{ name: fieldName, resource_subtype:'enum', workspace: wsGid, enum_options: options.map(n=>({ name:n, enabled:true })) } }) });
+  const fieldGid = created.data.gid;
+  const enumMap = {};
+  created.data.enum_options?.forEach(o => { enumMap[o.name] = o.gid; });
+  await asanaFetch(`/projects/${activeProject.projectGid}/addCustomFieldSetting`, { method:'POST', body: JSON.stringify({ data:{ custom_field: fieldGid, is_important:true } }) });
+  return { gid: fieldGid, enumMap };
+}
+
+async function setupCustomFields(epics) {
+  if (cfCache.userType && cfCache.priority && cfCache.epic) return;
+  log('Setting up custom fields...', 'info');
+  const [ut, pri, ep] = await Promise.all([
+    getOrCreateEnumField('User Type', USER_TYPES),
+    getOrCreateEnumField('Story Priority', PRIORITIES),
+    getOrCreateEnumField('Epic', epics)
+  ]);
+  cfCache = { userType: ut.gid, userTypeEnumMap: ut.enumMap, priority: pri.gid, priorityEnumMap: pri.enumMap, epic: ep.gid, epicEnumMap: ep.enumMap };
+}
+
+// ══════════════════════════════════════════
+// FETCH EXISTING STORIES FROM ASANA
+// ══════════════════════════════════════════
+
+async function fetchExistingStories(epicName) {
+  try {
+    // Get section GID (may not exist yet — that's fine, return empty)
+    const list = await asanaFetch(`/projects/${activeProject.projectGid}/sections`);
+    const section = list.data?.find(s => s.name === epicName);
+    if (!section) return [];
+
+    const tasks = await asanaFetch(`/sections/${section.gid}/tasks?opt_fields=name`);
+    return (tasks.data || []).map(t => t.name);
+  } catch { return []; }
+}
+
+// ══════════════════════════════════════════
+// GENERATE
+// ══════════════════════════════════════════
+
+async function generate() {
+  if (!selectedEpic || !activeProject) return;
+  const genBtn = document.getElementById('genBtn');
+  const pushBtn = document.getElementById('pushBtn');
+  genBtn.disabled = true; genBtn.textContent = 'Generating...';
+  pushBtn.disabled = true;
+  currentStories = []; pushedCount = 0;
+
+  document.getElementById('storiesArea').innerHTML = `<div class="loading"><div class="loading-row"><div class="spinner"></div><span class="loading-text">Reading existing Asana stories...</span></div><span class="loading-sub">Checking for duplicates before generating</span></div>`;
+
+  log('Checking for existing stories in Asana...', 'info');
+  const existing = await fetchExistingStories(selectedEpic);
+  log(existing.length ? `Found ${existing.length} existing stories — Claude will avoid duplicates` : `No existing stories found for "${selectedEpic}"`, 'info');
+
+  document.getElementById('storiesArea').innerHTML = `<div class="loading"><div class="loading-row"><div class="spinner"></div><span class="loading-text">Generating complete story set for ${selectedEpic}</span></div><span class="loading-sub">Claude is determining every story this epic needs</span></div>`;
+
+  const existingBlock = existing.length
+    ? `\n\nIMPORTANT — These stories already exist in Asana for this epic. Do NOT generate stories that duplicate or semantically overlap with any of these:\n${existing.map((s,i) => `${i+1}. ${s}`).join('\n')}`
+    : '';
+
+  const systemPrompt = `You are a senior product manager writing a COMPLETE, EXHAUSTIVE set of user stories for a specific epic in a software product.
+
+Project context:
+${activeProject.contextDoc.slice(0, 6000)}
+
+User types to consider: ${USER_TYPES.join(', ')}
+
+Your job: generate EVERY user story this epic genuinely requires. Cover all user types that interact with this epic, all primary flows, all edge cases, error states, empty states, and upgrade/upsell prompts. Don't cap yourself at a number. Prioritize correctly.${existingBlock}
+
+Return ONLY a valid JSON array. Zero markdown, zero backticks, zero preamble. Each item:
+{"userType":string,"epic":string,"story":"As a [user type] I want to be able to [action] so that [outcome]","priority":"must-have"|"should-have"|"nice-to-have"}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': state.anthropicKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role:'user', content:`Generate the complete, exhaustive set of user stories for the epic: "${selectedEpic}". Every story this epic genuinely needs — covering all user types, flows, edge cases, and states.` }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.map(b => b.text||'').join('') || '';
+    currentStories = JSON.parse(raw.replace(/```json/g,'').replace(/```/g,'').trim());
+
+    const eid = epicId(selectedEpic);
+    const badge = document.getElementById('ebadge-' + eid);
+    const check = document.getElementById('eck-' + eid);
+    if (badge) badge.textContent = currentStories.length;
+    if (check) check.style.color = 'var(--accent)';
+    document.getElementById('eb-' + eid)?.classList.add('done');
+
+    renderStories(currentStories);
+    updateTally();
+    pushBtn.disabled = false;
+    log(`${currentStories.length} stories generated for "${selectedEpic}"${existing.length ? ` (${existing.length} existing skipped)` : ''}`, 'ok');
+  } catch(e) {
+    document.getElementById('storiesArea').innerHTML = `<div class="empty"><div class="empty-glyph" style="opacity:0.2">✗</div><p>${e.message}</p></div>`;
+    log('Generation failed: ' + e.message, 'err');
+  }
+
+  genBtn.disabled = false; genBtn.textContent = 'Re-generate';
+}
+
+// ══════════════════════════════════════════
+// RENDER STORIES
+// ══════════════════════════════════════════
+
+function renderStories(stories) {
+  const area = document.getElementById('storiesArea');
+  area.innerHTML = '<div class="stories-grid" id="storiesGrid"></div>';
+  const grid = document.getElementById('storiesGrid');
+  stories.forEach((s, i) => {
+    const pc = s.priority==='must-have' ? 'must-have' : s.priority==='should-have' ? 'should-have' : 'nice-to-have';
+    const ptc = s.priority==='must-have' ? 'tag-must' : s.priority==='should-have' ? 'tag-should' : 'tag-nice';
+    const card = document.createElement('div');
+    card.className = `story-card ${pc}`; card.dataset.index = i;
+    card.style.animationDelay = `${Math.min(i * 0.035, 0.5)}s`;
+    const fmt = s.story
+      .replace(/^(As a )([\s\S]+?)( I want)/i,'$1<em>$2</em>$3')
+      .replace(/(I want to be able to )([\s\S]+?)( so that )/i,'$1<em>$2</em>$3')
+      .replace(/( so that )([\s\S]+)$/i,'$1<em>$2</em>');
+    card.innerHTML = `<div class="card-tags"><span class="tag tag-user">${s.userType}</span><span class="tag ${ptc}">${s.priority}</span></div><div class="story-text">${fmt}</div><div class="card-footer"><span class="push-status" id="pstat-${i}">Not pushed</span><button class="card-copy" onclick="copyCard(${i},this)">Copy</button></div>`;
+    grid.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════
+// PUSH ALL TO ASANA
+// ══════════════════════════════════════════
+
+async function pushAll() {
+  if (!currentStories.length) return;
+  const pushBtn = document.getElementById('pushBtn'), genBtn = document.getElementById('genBtn');
+  pushBtn.disabled = true; genBtn.disabled = true; pushedCount = 0;
+
+  log('Setting up section, tags, and custom fields...', 'info');
+
+  let sectionGid;
+  try { sectionGid = await getOrCreateSection(selectedEpic); }
+  catch(e) { log('Section failed: '+e.message,'err'); pushBtn.disabled=false; genBtn.disabled=false; return; }
+
+  try { await setupCustomFields(activeProject.epics); }
+  catch(e) { log('Custom fields warning (continuing): '+e.message,'err'); }
+
+  // Create all tags upfront
+  for (let i=0; i<USER_TYPES.length; i++) {
+    try { log(`Tag: ${USER_TYPES[i]}`,'info'); await getOrCreateTag(USER_TYPES[i], TAG_COLORS[i%TAG_COLORS.length]); await sleep(80); } catch{}
+  }
+  for (let i=0; i<PRIORITIES.length; i++) {
+    try { log(`Tag: ${PRIORITIES[i]}`,'info'); await getOrCreateTag(PRIORITIES[i], PRI_COLORS[i]); await sleep(80); } catch{}
+  }
+  for (let i=0; i<activeProject.epics.length; i++) {
+    try { log(`Tag: ${activeProject.epics[i]}`,'info'); await getOrCreateTag(activeProject.epics[i], EPIC_COLORS[i%EPIC_COLORS.length]); await sleep(80); } catch{}
+  }
+
+  // Push tasks
+  const cards = document.querySelectorAll('.story-card');
+  for (let i=0; i<currentStories.length; i++) {
+    const s = currentStories[i];
+    log(`Pushing ${i+1}/${currentStories.length} — ${s.userType}`, 'info');
+
+    const customFields = {};
+    if (cfCache.userType && cfCache.userTypeEnumMap[s.userType]) customFields[cfCache.userType] = cfCache.userTypeEnumMap[s.userType];
+    if (cfCache.priority && cfCache.priorityEnumMap[s.priority]) customFields[cfCache.priority] = cfCache.priorityEnumMap[s.priority];
+    if (cfCache.epic && cfCache.epicEnumMap[s.epic]) customFields[cfCache.epic] = cfCache.epicEnumMap[s.epic];
+
+    const tagGids = [tagCache[s.userType]||null, tagCache[s.priority]||null, tagCache[s.epic]||null].filter(Boolean);
+
+    const statusEl = cards[i]?.querySelector('.push-status');
+    if (statusEl) { statusEl.textContent='Pushing...'; statusEl.className='push-status pushing'; }
+
+    try {
+      const res = await asanaFetch('/tasks', { method:'POST', body: JSON.stringify({ data:{
+        name: s.story,
+        notes: `Epic: ${s.epic}`,
+        projects: [activeProject.projectGid],
+        memberships: [{ project: activeProject.projectGid, section: sectionGid }],
+        tags: tagGids,
+        ...(Object.keys(customFields).length ? { custom_fields: customFields } : {})
+      }})});
+      if (res.data?.gid) {
+        if (statusEl) { statusEl.textContent='✓ Pushed'; statusEl.className='push-status pushed'; }
+        cards[i]?.classList.add('pushed');
+        pushedCount++;
+      } else {
+        if (statusEl) { statusEl.textContent='✗ Error'; statusEl.className='push-status error'; }
+      }
+    } catch {
+      if (statusEl) { statusEl.textContent='✗ Failed'; statusEl.className='push-status error'; }
+    }
+    updateTally();
+    await sleep(180);
+  }
+
+  log(`Done — ${pushedCount}/${currentStories.length} pushed to "${selectedEpic}"`, 'ok');
+  genBtn.disabled = false;
+}
+
+// ══════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════
+
+function log(msg, type='info') {
+  const el = document.getElementById('logText');
+  el.textContent = msg;
+  el.className = 'log-text ' + (type==='ok'?'ok':type==='err'?'err':'info');
+}
+
+function updateTally() {
+  document.getElementById('tally').style.display = 'flex';
+  document.getElementById('tallyCount').textContent = currentStories.length;
+  document.getElementById('tallyPushed').textContent = pushedCount;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function copyCard(i, btn) {
+  navigator.clipboard.writeText(currentStories[i].story).then(() => {
+    btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+  });
+}
+
+function readFile(file, cb) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => cb(e.target.result);
+  // For PDFs just read as text (basic extraction)
+  reader.readAsText(file);
+}
+
+// Drag-drop highlighting
+document.querySelectorAll('.file-drop').forEach(drop => {
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); });
+});
+
+// ══════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════
+boot();
+</script>
+</body>
+</html>
