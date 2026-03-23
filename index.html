@@ -985,32 +985,45 @@ function renderStories(stories) {
 // ══════════════════════════════════════════
 
 async function pushAll() {
-  if (!currentStories.length) return;
+  if (!currentStories.length) { log('No stories to push', 'err'); return; }
   const pushBtn = document.getElementById('pushBtn'), genBtn = document.getElementById('genBtn');
-  pushBtn.disabled = true; genBtn.disabled = true; pushedCount = 0;
+  pushBtn.disabled = true; pushBtn.textContent = 'Pushing...';
+  genBtn.disabled = true; pushedCount = 0;
 
-  log('Setting up section, tags, and custom fields...', 'info');
+  log('Getting section GID...', 'info');
 
   let sectionGid;
-  try { sectionGid = await getOrCreateSection(selectedEpic); }
-  catch(e) { log('Section failed: '+e.message,'err'); pushBtn.disabled=false; genBtn.disabled=false; return; }
+  try {
+    sectionGid = await getOrCreateSection(selectedEpic);
+    log(`Section ready: ${sectionGid}`, 'info');
+  } catch(e) {
+    log('Section failed: ' + e.message, 'err');
+    pushBtn.disabled=false; pushBtn.textContent='Push to Asana →';
+    genBtn.disabled=false; return;
+  }
 
+  log('Setting up custom fields...', 'info');
   try { await setupCustomFields(activeProject.epics); }
-  catch(e) { log('Custom fields warning (continuing): '+e.message,'err'); }
+  catch(e) { log('Custom fields skipped: ' + e.message, 'err'); }
 
-  // Create all tags upfront
+  // Create tags upfront — log each failure visibly
+  log('Creating tags...', 'info');
   for (let i=0; i<USER_TYPES.length; i++) {
-    try { log(`Tag: ${USER_TYPES[i]}`,'info'); await getOrCreateTag(USER_TYPES[i], TAG_COLORS[i%TAG_COLORS.length]); await sleep(80); } catch{}
+    try { await getOrCreateTag(USER_TYPES[i], TAG_COLORS[i%TAG_COLORS.length]); await sleep(80); }
+    catch(e) { log(`Tag warn (${USER_TYPES[i]}): ${e.message}`, 'err'); }
   }
   for (let i=0; i<PRIORITIES.length; i++) {
-    try { log(`Tag: ${PRIORITIES[i]}`,'info'); await getOrCreateTag(PRIORITIES[i], PRI_COLORS[i]); await sleep(80); } catch{}
+    try { await getOrCreateTag(PRIORITIES[i], PRI_COLORS[i]); await sleep(80); }
+    catch(e) { log(`Tag warn (${PRIORITIES[i]}): ${e.message}`, 'err'); }
   }
-  for (let i=0; i<activeProject.epics.length; i++) {
-    try { log(`Tag: ${activeProject.epics[i]}`,'info'); await getOrCreateTag(activeProject.epics[i], EPIC_COLORS[i%EPIC_COLORS.length]); await sleep(80); } catch{}
+  for (let i=0; i<(activeProject.epics||[]).length; i++) {
+    try { await getOrCreateTag(activeProject.epics[i], EPIC_COLORS[i%EPIC_COLORS.length]); await sleep(80); }
+    catch(e) { log(`Tag warn (${activeProject.epics[i]}): ${e.message}`, 'err'); }
   }
 
-  // Push tasks
+  // Push tasks one by one
   const cards = document.querySelectorAll('.story-card');
+  let errCount = 0;
   for (let i=0; i<currentStories.length; i++) {
     const s = currentStories[i];
     log(`Pushing ${i+1}/${currentStories.length} — ${s.userType}`, 'info');
@@ -1021,7 +1034,6 @@ async function pushAll() {
     if (cfCache.epic && cfCache.epicEnumMap[s.epic]) customFields[cfCache.epic] = cfCache.epicEnumMap[s.epic];
 
     const tagGids = [tagCache[s.userType]||null, tagCache[s.priority]||null, tagCache[s.epic]||null].filter(Boolean);
-
     const statusEl = cards[i]?.querySelector('.push-status');
     if (statusEl) { statusEl.textContent='Pushing...'; statusEl.className='push-status pushing'; }
 
@@ -1039,17 +1051,26 @@ async function pushAll() {
         cards[i]?.classList.add('pushed');
         pushedCount++;
       } else {
+        const errMsg = res.errors?.[0]?.message || JSON.stringify(res);
         if (statusEl) { statusEl.textContent='✗ Error'; statusEl.className='push-status error'; }
+        log(`Task error: ${errMsg}`, 'err');
+        errCount++;
       }
-    } catch {
+    } catch(e) {
       if (statusEl) { statusEl.textContent='✗ Failed'; statusEl.className='push-status error'; }
+      log(`Task exception: ${e.message}`, 'err');
+      errCount++;
     }
     updateTally();
-    await sleep(180);
+    await sleep(200);
   }
 
-  log(`Done — ${pushedCount}/${currentStories.length} pushed to "${selectedEpic}"`, 'ok');
-  genBtn.disabled = false;
+  const summary = errCount > 0
+    ? `Done with ${errCount} errors — ${pushedCount}/${currentStories.length} pushed`
+    : `Done — ${pushedCount}/${currentStories.length} stories pushed to "${selectedEpic}"`;
+  log(summary, errCount > 0 ? 'err' : 'ok');
+  pushBtn.disabled=false; pushBtn.textContent='Push to Asana →';
+  genBtn.disabled=false;
 }
 
 // ══════════════════════════════════════════
