@@ -914,7 +914,7 @@ Return ONLY a valid JSON array. Zero markdown, zero backticks, zero preamble. Ea
       headers: { 'Content-Type': 'application/json', 'x-api-key': state.anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 4000,
         system: systemPrompt,
         messages: [{ role:'user', content:`Generate the complete, exhaustive set of user stories for the epic: "${selectedEpic}". Every story this epic genuinely needs — covering all user types, flows, edge cases, and states.` }]
       })
@@ -922,9 +922,18 @@ Return ONLY a valid JSON array. Zero markdown, zero backticks, zero preamble. Ea
     const data = await res.json();
     if (!data.content) throw new Error('No content in response: ' + JSON.stringify(data));
     const raw = data.content.map(b => b.text||'').join('').trim();
-    const match = raw.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array in response: ' + raw.slice(0, 200));
-    currentStories = JSON.parse(match[0]);
+    // Strip markdown fences if present
+    const stripped = raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+    // Try direct parse first, then extract array
+    let parsed;
+    try {
+      parsed = JSON.parse(stripped);
+    } catch {
+      const match = stripped.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error('No JSON array in response: ' + raw.slice(0, 300));
+      parsed = JSON.parse(match[0]);
+    }
+    currentStories = Array.isArray(parsed) ? parsed : parsed.stories || [];
 
     const eid = epicId(selectedEpic);
     const badge = document.getElementById('ebadge-' + eid);
