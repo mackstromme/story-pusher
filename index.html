@@ -472,7 +472,7 @@ let cfCache = { userType:null, userTypeEnumMap:{}, priority:null, priorityEnumMa
 const TAG_COLORS = ['light-green','light-blue','light-purple','light-pink','light-orange','light-teal'];
 const PRI_COLORS = ['light-red','light-yellow','light-teal'];
 const EPIC_COLORS = ['light-green','light-blue','light-purple','light-pink','light-orange','light-teal','light-red'];
-const USER_TYPES = ['Visitor','Free Account','Subscriber','Lifetime Purchaser','Business Owner','Proposal Recipient'];
+const USER_TYPES = ['Visitor','Free Account','Subscriber','Lifetime Purchaser','Team Account','Proposal Recipient','Admin'];
 const PRIORITIES = ['must-have','should-have','nice-to-have'];
 
 // ══════════════════════════════════════════
@@ -754,7 +754,7 @@ async function inferEpics(anthropicKey, contextDoc) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 500,
-        system: `You are a product manager. Given a project context document, identify the key product epics — the major functional areas that would each contain multiple user stories. Return ONLY a JSON array of epic name strings. No markdown, no explanation. Example: ["Proposal Builder","Contracts","Payment","Onboarding"]`,
+        system: `You are a product manager. Given a project context document, identify the key product epics — the major functional areas that would each contain multiple user stories. Consider all user types including end users (Visitor, Free Account, Subscriber, Lifetime Purchaser, Team Account, Proposal Recipient) and the platform operator (Admin — the SaaS owner who manages users, billing, support, and platform config). Return ONLY a JSON array of epic name strings. No markdown, no explanation. Example: ["Proposal Builder","Contracts","Payment","Onboarding","Admin & Platform"]`,
         messages: [{ role: 'user', content: `Here is the project context:\n\n${contextDoc.slice(0, 8000)}\n\nReturn the list of epics as a JSON array of strings.` }]
       })
     });
@@ -905,6 +905,15 @@ Project context:
 ${activeProject.contextDoc.slice(0, 6000)}
 
 User types to consider: ${USER_TYPES.join(', ')}
+
+User type definitions:
+- Visitor: browsing the marketing site, not logged in
+- Free Account: signed up, on free tier (limited proposals, watermark, no custom branding)
+- Subscriber: active $19/mo subscriber, full access
+- Lifetime Purchaser: paid once for permanent full access
+- Team Account: a small studio or agency using the product with multiple seats and a shared workspace
+- Proposal Recipient: the end client who receives a proposal link, reviews, signs, and pays
+- Admin: the SaaS owner/operator (internal). Manages all users, handles billing, debugs customer issues, configures the platform, monitors system health, accesses any account for support purposes
 
 Your job: generate EVERY user story this epic genuinely requires. Cover all user types that interact with this epic, all primary flows, all edge cases, error states, empty states, and upgrade/upsell prompts. Don't cap yourself at a number. Prioritize correctly.${existingBlock}
 
