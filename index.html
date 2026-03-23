@@ -302,6 +302,7 @@ btn-row { display:flex; gap:10px; }
         <span id="connLabel">Connecting...</span>
       </div>
       <button class="btn" onclick="openNewProjectModal()">+ New Project</button>
+      <button class="btn" onclick="exportMarkdown()">↓ Export MD</button>
       <button class="btn" onclick="openSettingsModal()">Settings</button>
     </div>
   </div>
@@ -498,41 +499,83 @@ function loadActiveProject() {
   const ids = Object.keys(projects);
   if (!ids.length) return;
 
-  // Default to saved active or first
   const activeId = state.activeProjectId && projects[state.activeProjectId]
-    ? state.activeProjectId
-    : ids[0];
+    ? state.activeProjectId : ids[0];
   state.activeProjectId = activeId;
   saveState(state);
 
   activeProject = projects[activeId];
 
-  // Populate project switcher
   const sel = document.getElementById('projectSelect');
   sel.innerHTML = '';
   ids.forEach(id => {
     const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = projects[id].name;
+    opt.value = id; opt.textContent = projects[id].name;
     if (id === activeId) opt.selected = true;
     sel.appendChild(opt);
   });
 
   document.getElementById('currentProjectName').textContent = activeProject.name;
 
-  // Reset caches when switching project
   sectionCache = {}; tagCache = {}; wsGidCache = null;
   cfCache = { userType:null, userTypeEnumMap:{}, priority:null, priorityEnumMap:{}, epic:null, epicEnumMap:{} };
   selectedEpic = null; currentStories = []; pushedCount = 0;
 
-  buildEpicSidebar(activeProject.epics || []);
+  // Show loading state in sidebar
+  document.getElementById('epicList').innerHTML = '<div style="font-family:\'DM Mono\',monospace; font-size:10px; color:#555; padding:8px 4px;">Loading from Asana...</div>';
   document.getElementById('genBtn').disabled = true;
   document.getElementById('pushBtn').disabled = true;
   document.getElementById('tally').style.display = 'none';
   document.getElementById('toolbarCtx').textContent = 'Select an epic to generate its complete story set';
   document.getElementById('storiesArea').innerHTML = `<div class="empty"><div class="empty-glyph">◎</div><p>Select an epic from the left.<br>Claude generates the complete<br>story set — no manual count.</p></div>`;
 
-  checkConnection();
+  checkConnection().then(() => syncFromAsana());
+}
+
+async function syncFromAsana() {
+  // Read sections from Asana as epics
+  try {
+    log('Reading epics from Asana...', 'info');
+    const sectionsRes = await asanaFetch(`/projects/${activeProject.projectGid}/sections`);
+    const asanaSections = (sectionsRes.data || []).map(s => s.name).filter(n => n && n !== 'Untitled section');
+
+    // Read tags from Asana workspace as user types
+    log('Reading user types from Asana...', 'info');
+    const wsGid = await getWsGid();
+    const tagsRes = await asanaFetch(`/workspaces/${wsGid}/tags`);
+    const asanaTags = (tagsRes.data || []).map(t => t.name);
+
+    // Filter tags to only ones that match known user type patterns
+    const knownUserTypes = ['Visitor','Free Account','Subscriber','Lifetime Purchaser','Team Account','Proposal Recipient','Admin'];
+    const foundUserTypes = knownUserTypes.filter(ut => asanaTags.includes(ut));
+
+    if (asanaSections.length > 0) {
+      // Asana has sections — use those as epics
+      log(`Found ${asanaSections.length} epics in Asana`, 'ok');
+      activeProject.epics = asanaSections;
+      state.projects[state.activeProjectId].epics = asanaSections;
+    } else {
+      // No sections yet — fall back to stored epics from context doc
+      log('No sections in Asana yet — using context doc epics', 'info');
+    }
+
+    if (foundUserTypes.length > 0) {
+      // Asana has user type tags — use those
+      log(`Found ${foundUserTypes.length} user types in Asana`, 'ok');
+      // Update USER_TYPES to match what's in Asana (merged with defaults for any missing)
+      const mergedTypes = [...new Set([...foundUserTypes, ...knownUserTypes])];
+      activeProject.userTypes = mergedTypes;
+    } else {
+      activeProject.userTypes = knownUserTypes;
+    }
+
+    saveState(state);
+    buildEpicSidebar(activeProject.epics || []);
+    log('Ready.', 'ok');
+  } catch(e) {
+    log('Could not sync from Asana — using stored epics: ' + e.message, 'err');
+    buildEpicSidebar(activeProject.epics || []);
+  }
 }
 
 // ══════════════════════════════════════════
@@ -791,6 +834,7 @@ async function checkConnection() {
     const data = await asanaFetch('/users/me');
     if (data.data?.name) {
       document.getElementById('connDot').classList.add('live');
+      document.getElementById('connDot').classList.remove('err');
       document.getElementById('connLabel').textContent = `Connected · ${data.data.name.split(' ')[0]}`;
       log(`Connected as ${data.data.name}`, 'ok');
     } else throw new Error('bad auth');
@@ -799,6 +843,7 @@ async function checkConnection() {
     document.getElementById('connDot').classList.add('err');
     document.getElementById('connLabel').textContent = 'Auth failed';
     log('Asana auth failed — check token in Settings', 'err');
+    throw new Error('auth failed');
   }
 }
 
@@ -899,12 +944,14 @@ async function generate() {
     ? `\n\nIMPORTANT — These stories already exist in Asana for this epic. Do NOT generate stories that duplicate or semantically overlap with any of these:\n${existing.map((s,i) => `${i+1}. ${s}`).join('\n')}`
     : '';
 
+  const effectiveUserTypes = activeProject.userTypes || USER_TYPES;
+
   const systemPrompt = `You are a senior product manager writing a COMPLETE, EXHAUSTIVE set of user stories for a specific epic in a software product.
 
 Project context:
 ${activeProject.contextDoc.slice(0, 6000)}
 
-User types to consider: ${USER_TYPES.join(', ')}
+User types to consider: ${effectiveUserTypes.join(', ')}
 
 User type definitions:
 - Visitor: browsing the marketing site, not logged in
@@ -915,7 +962,7 @@ User type definitions:
 - Proposal Recipient: the end client who receives a proposal link, reviews, signs, and pays
 - Admin: the SaaS owner/operator (internal). Manages all users, handles billing, debugs customer issues, configures the platform, monitors system health, accesses any account for support purposes
 
-CRITICAL: You MUST only use EXACTLY these user type strings in the "userType" field: ${USER_TYPES.map(u => `"${u}"`).join(', ')}. Do NOT use "Business Owner" or any other user type not in this list, even if the context document mentions other user types. If the context doc mentions "Business Owner", map it to "Team Account" instead.
+CRITICAL: You MUST only use EXACTLY these user type strings in the "userType" field: ${effectiveUserTypes.map(u => `"${u}"`).join(', ')}. Do NOT use "Business Owner" or any other user type not in this list, even if the context document mentions other user types. If the context doc mentions "Business Owner", map it to "Team Account" instead.
 
 Your job: generate EVERY user story this epic genuinely requires. Cover all user types that interact with this epic, all primary flows, all edge cases, error states, empty states, and upgrade/upsell prompts. Don't cap yourself at a number. Prioritize correctly.${existingBlock}
 
@@ -1127,6 +1174,85 @@ document.querySelectorAll('.file-drop').forEach(drop => {
   drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag'); });
 });
+
+// ══════════════════════════════════════════
+// EXPORT MARKDOWN
+// ══════════════════════════════════════════
+
+async function exportMarkdown() {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '↓ Pulling...';
+  log('Pulling all stories from Asana...', 'info');
+
+  try {
+    // Get all sections
+    const sectionsRes = await asanaFetch(`/projects/${activeProject.projectGid}/sections`);
+    const sections = sectionsRes.data || [];
+
+    if (!sections.length) {
+      log('No sections found in Asana project', 'err');
+      btn.disabled = false; btn.textContent = '↓ Export MD'; return;
+    }
+
+    let md = `# ${activeProject.name} — User Stories\n\n`;
+    md += `_Exported ${new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}_\n\n`;
+    md += `---\n\n`;
+
+    let totalStories = 0;
+
+    for (const section of sections) {
+      log(`Fetching: ${section.name}...`, 'info');
+      const tasksRes = await asanaFetch(`/sections/${section.gid}/tasks?opt_fields=name,notes,tags,custom_fields&limit=100`);
+      const tasks = tasksRes.data || [];
+
+      if (!tasks.length) continue;
+
+      md += `## ${section.name}\n\n`;
+
+      // Group by user type if tags are present
+      const grouped = {};
+      for (const task of tasks) {
+        // Try to get user type from tags
+        const userTypeTag = task.tags?.find(t => USER_TYPES.includes(t.name));
+        const userType = userTypeTag?.name || 'General';
+        if (!grouped[userType]) grouped[userType] = [];
+        grouped[userType].push(task);
+      }
+
+      const userTypeOrder = [...USER_TYPES, 'General'];
+      for (const ut of userTypeOrder) {
+        if (!grouped[ut]?.length) continue;
+        md += `### ${ut}\n\n`;
+        for (const task of grouped[ut]) {
+          // Get priority from tags
+          const priTag = task.tags?.find(t => ['must-have','should-have','nice-to-have'].includes(t.name));
+          const pri = priTag?.name || '';
+          md += `- ${task.name}${pri ? ` _(${pri})_` : ''}\n`;
+          totalStories++;
+        }
+        md += '\n';
+      }
+
+      await sleep(100); // rate limit buffer
+    }
+
+    md += `---\n\n_Total: ${totalStories} stories across ${sections.length} epics_\n`;
+
+    // Download
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${activeProject.name.replace(/\s+/g,'-').toLowerCase()}-user-stories.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    log(`Exported ${totalStories} stories from ${sections.length} epics`, 'ok');
+  } catch(e) {
+    log('Export failed: ' + e.message, 'err');
+  }
+
+  btn.disabled = false; btn.textContent = '↓ Export MD';
+}
 
 // ══════════════════════════════════════════
 // BOOT
